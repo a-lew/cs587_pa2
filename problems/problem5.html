@@ -20,13 +20,78 @@
 </head>
 <body>
 <script type="module">
-    import {ThreeEngine} from "../js/utils/utils_three.js";
+    import {get_default_lil_gui, ThreeEngine, refresh_displays} from "../js/utils/utils_three.js";
+    import {mul_matrix_matrix} from "../js/utils/utils_math.js";
 
     // todo: recreate this visualization, demonstrating your understanding of SE(2)
     // todo: https://yale-cpsc-487-587-internal-djrakita-c95fa6c3239a481a48d29a6b0fd.gitlab.io/html/visualizations/point_mapping_2D_direct_isometry.html
     // todo: (no need to draw the unit circle here)
     // todo: or, feel free to come up with any visualization here that demonstrates your understanding of SE(2)
+    let engine = ThreeEngine.new_default_2d();
+    let gui = get_default_lil_gui();
 
+    let settings = {
+        draw_points: true,
+        draw_wireframe: true,
+        draw_mesh: false,
+        point_size: 0.001,
+        trans_y: 0.0,
+        theta: 0.0,
+        trans_x: 0.0
+    }
+
+    let actions = {
+        reset: function() {
+            settings.trans_x = 0;
+            settings.trans_y = 0;
+            settings.theta = 0;
+            refresh_displays(gui);
+        }
+    };
+
+    gui.add(settings, 'draw_points', true).name('Draw Points');
+    gui.add(settings, 'draw_wireframe', true).name('Draw Wireframe');
+    gui.add(settings, 'draw_mesh', false).name('Draw Mesh');
+    gui.add(settings, 'point_size', 0.001, 0.03).name('Point Size');
+
+    let folder = gui.addFolder('Matrix Controls');
+    folder.add(settings, 'trans_x', -2.0, 2.0).name('Translation x');
+    folder.add(settings, 'trans_y', -2.0, 2.0).name('Translation y');
+    folder.add(settings, 'theta', -Math.PI, Math.PI).name('Rotation angle');
+    folder.add(actions, 'reset').name('Reset');
+
+    engine.add_standard2Dshape_as_mesh_object(0x00eeff);
+    let standard_points = engine.get_local_vertex_positions_of_mesh_object(0);
+    let wireframe_points = engine.get_local_vertex_positions_of_mesh_object_wireframe(0);
+
+    let apply_transform = function(transform, point) {
+        if (point.length < 3) point.push([1.0]);
+        let transformed_point = mul_matrix_matrix(transform, point);
+        return transformed_point.slice(0, 2);
+    };
+
+    engine.animation_loop(() => {
+
+        let r0 = [Math.cos(settings.theta), -Math.sin(settings.theta), settings.trans_x];
+        let r1 = [Math.sin(settings.theta), Math.cos(settings.theta), settings.trans_y];
+        let r2 = [0.0, 0.0, 1.0];
+        let direct_isometry = [r0, r1, r2];
+
+        let new_points = standard_points.map(point => apply_transform(direct_isometry, point));
+        let new_wireframe = wireframe_points.map(point => apply_transform(direct_isometry, point));
+
+        engine.update_vertex_positions_of_mesh_object(0, new_points);
+        engine.update_vertex_positions_of_mesh_object_wireframe(0, new_wireframe);
+
+        if (settings.draw_points) {
+            new_points.forEach(point => {
+                engine.draw_debug_sphere(point, settings.point_size, 0xeeee00);
+            });
+        }
+
+        engine.mesh_objects[0].visible = settings.draw_mesh;
+        engine.set_mesh_object_wireframe_visibility(0, settings.draw_wireframe);
+    });
 </script>
 </body>
 </html>
