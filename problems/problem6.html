@@ -20,12 +20,110 @@
 </head>
 <body>
 <script type="module">
-    import {ThreeEngine} from "../js/utils/utils_three.js";
+    import {get_default_lil_gui, ThreeEngine, refresh_displays} from "../js/utils/utils_three.js";
+    import {add_matrix_matrix, mul_matrix_matrix, mul_matrix_scalar,
+            transpose,
+            roll_list_into_matrix, roll_list_into_column_vec_matrix, unroll_matrix_to_list} from "../js/utils/utils_math.js";
 
     // todo: recreate this visualization, demonstrating your understanding of displacement-based distance in SE(2)
     // todo: https://yale-cpsc-487-587-internal-djrakita-c95fa6c3239a481a48d29a6b0fd.gitlab.io/html/visualizations/SE2_distance2.html
     // todo: make sure you are using the displacement-based distance!
     // todo: or, feel free to come up with any visualization here that demonstrates your understanding of SE(2) distance
+    let engine = ThreeEngine.new_default_2d();
+    let gui = get_default_lil_gui();
+
+    let settings = {
+        theta_1: 0.0,
+        tx_1: 0.0,
+        ty_1: 0.0,
+        theta_2: 0.0,
+        tx_2: 0.0,
+        ty_2: 0.0,
+        dist: 0.0
+    }
+
+    let actions = {
+        reset_1: function() {
+            settings.theta_1 = 0;
+            settings.tx_1 = 0;
+            settings.ty_1 = 0;
+            refresh_displays(gui);
+        },
+        reset_2: function() {
+            settings.theta_2 = 0;
+            settings.tx_2 = 0;
+            settings.ty_2 = 0;
+            refresh_displays(gui);
+        }
+    };
+
+    gui.add(settings, 'theta_1', -2*Math.PI, 2*Math.PI).name('Theta1');
+    gui.add(settings, 'tx_1', -2, 2).name('tx1');
+    gui.add(settings, 'ty_1', -2, 2).name('ty1');
+    gui.add(actions, 'reset_1').name('reset1');
+
+    gui.add(settings, 'theta_2', -2*Math.PI, 2*Math.PI).name('Theta2');
+    gui.add(settings, 'tx_2', -2, 2).name('tx2');
+    gui.add(settings, 'ty_2', -2, 2).name('ty2');
+    gui.add(actions, 'reset_2').name('reset2');
+
+    gui.add(settings, 'dist').name("disp based dis").disable();
+
+
+    let unit_x_point = roll_list_into_column_vec_matrix([1, 0]);
+    let unit_y_point = roll_list_into_column_vec_matrix([0, 1]);
+
+    let apply_transform = function(transform, point) {
+        let transformed_point = mul_matrix_matrix(transform, point);
+        return transformed_point.slice(0, 2);
+    };
+
+    let displacement_distance = function(R1, t1, R2, t2) {
+        let R_prime = transpose(R1);
+        let t_prime = mul_matrix_matrix(R_prime, mul_matrix_scalar(t1, -1));
+        let disp_R = mul_matrix_matrix(R_prime, R2);
+        let disp_T = add_matrix_matrix(mul_matrix_matrix(R_prime, t2), t_prime);
+
+        let a1 = Math.atan2(disp_R[1][0], disp_R[0][0]);
+        let p = 0;
+        let q = 0;
+        if (Math.abs(a1) < 0.001) {
+            p = 1 - (Math.pow(a1, 2) / 6) + (Math.pow(a1, 4) / 120);
+            q = (a1 / 2) - (Math.pow(a1, 3) / 24) + (Math.pow(a1, 5) / 720);
+        } else {
+            p = Math.sin(a1) / a1;
+            q = (1 - Math.cos(a1)) / a1;
+        }
+
+        let tmp = mul_matrix_scalar(roll_list_into_matrix([p, q, -q, p], 2, 2), (1 / (Math.pow(p, 2) + Math.pow(q, 2))));
+        let log_map = mul_matrix_matrix(tmp, disp_T);
+        return Math.sqrt(Math.pow(a1, 2) + Math.pow(log_map[0][0], 2) + Math.pow(log_map[1][0], 2));
+    }
+
+    engine.animation_loop(() => {
+
+        let R_1 = [[Math.cos(settings.theta_1), -Math.sin(settings.theta_1)],
+                   [Math.sin(settings.theta_1), Math.cos(settings.theta_1)]]
+        let t_1 = roll_list_into_column_vec_matrix([settings.tx_1, settings.ty_1]);
+        let R_2 = [[Math.cos(settings.theta_2), -Math.sin(settings.theta_2)],
+                   [Math.sin(settings.theta_2), Math.cos(settings.theta_2)]]
+        let t_2 = roll_list_into_column_vec_matrix([settings.tx_2, settings.ty_2]);
+
+        settings.dist = displacement_distance(R_1, t_1, R_2, t_2);
+        refresh_displays(gui);
+
+        let unit_x_1 = add_matrix_matrix(mul_matrix_matrix(R_1, unit_x_point), t_1);
+        let unit_y_1 = add_matrix_matrix(mul_matrix_matrix(R_1, unit_y_point), t_1);
+
+        let unit_x_2 = add_matrix_matrix(mul_matrix_matrix(R_2, unit_x_point), t_2);
+        let unit_y_2 = add_matrix_matrix(mul_matrix_matrix(R_2, unit_y_point), t_2);
+
+        engine.draw_debug_vector([settings.tx_1, settings.ty_1], unroll_matrix_to_list(unit_x_1), 0.035, undefined, 0xff3333);
+        engine.draw_debug_vector([settings.tx_1, settings.ty_1], unroll_matrix_to_list(unit_y_1), 0.035, undefined, 0x33ff33);
+
+        engine.draw_debug_vector([settings.tx_2, settings.ty_2], unroll_matrix_to_list(unit_x_2), 0.035, undefined, 0xaa4444);
+        engine.draw_debug_vector([settings.tx_2, settings.ty_2], unroll_matrix_to_list(unit_y_2), 0.035, undefined, 0x44aa44);
+    });
 
 </script>
 </body>
